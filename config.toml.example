@@ -1,0 +1,8 @@
+mysql_db_name = "db_name"
+mysql_user_name ="username"
+mysql_password ="passwd"
+mysql_url = "172.0.0.1:3306"
+mongo_db_url = "localhost"
+mongo_db_name = "mongo_db_name"
+mongo_collection_name = "collection_db_name"
+
