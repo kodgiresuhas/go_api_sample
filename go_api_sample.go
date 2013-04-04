@@ -98,6 +98,7 @@ func include(search int,featured_property_ids []int) bool{
 }
 
 func zip_around_10_miles(cur_zip string, limit int) []string {
+		if cur_zip == "" {return nil}
 		config,_:= toml.LoadFile("config.toml")
 	 	mysql_user_name ,_ := config.Get("mysql_user_name").(string)
 	 	mysql_password ,_ := config.Get("mysql_password").(string)
@@ -126,7 +127,7 @@ func loadResult(r *http.Request )([]Property,[]int,int) {
    params := r.URL.Query()//[lenPath:]
  
 	 config,_:= toml.LoadFile("config.toml")
-	 mongo_url ,_ := config.Get("mongo_url").(string)	
+	 mongo_url ,_ := config.Get("mongo_db_url").(string)	
    mongo_db_name ,_ := config.Get("mongo_db_name").(string)
 	 mongo_collection_name ,_ := config.Get("mongo_collection_name").(string)
 
