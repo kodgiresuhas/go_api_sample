@@ -140,13 +140,12 @@ func loadResult(r *http.Request )([]Property,[]int,int) {
 	 c := session.DB(mongo_db_name).C(mongo_collection_name) 
 
 	 search_results:= []Property{}
-	 var page int	
-	 page_no := params["page_number"]	 
-	 if page_no !=nil{
-		 page,_= 	strconv.Atoi(page_no[0])
+	 page := 1
+	 if params["page_number"]	  !=nil{
+		 page,_= 	strconv.Atoi(params["page_number"][0])
 	 }	 
 	
-	 var per_page int
+	 per_page  := 24
 	 if params["per_page"] != nil	{
 	 	 per_page,_ = 	strconv.Atoi(params["per_page"][0])
 	 }
@@ -171,7 +170,7 @@ func loadResult(r *http.Request )([]Property,[]int,int) {
 	   scroll_flag,_ = strconv.Atoi(scrl_flag[0])
    }
 
-	 var property_count int 
+	 property_count := 0
 	 search_query := bson.M{}
 	 var zip_within_10_miles []string
 	 if zip_codes == nil || are_filters_applied(params) == false { 
@@ -197,12 +196,35 @@ func loadResult(r *http.Request )([]Property,[]int,int) {
      }
 	 }	
 	 if are_filters_applied(params) == true{
-	   min_price , _ := strconv.Atoi(params["filters[min_price]"][0])
-  	 max_price , _ := strconv.Atoi(params["filters[max_price1]"][0])
-	   min_beds , _  := strconv.Atoi(params["filters[min_beds]"][0])
-  	 max_beds , _  := strconv.Atoi(params["filters[max_price1]"][0])
-	   min_baths , _ := strconv.Atoi(params["filters[min_baths]"][0])
-  	 max_baths , _ := strconv.Atoi(params["filters[max_baths1]"][0])
+		 min_price := 0
+		 if params["filters[min_price]"] != nil{
+		   min_price , _ = strconv.Atoi(params["filters[min_price]"][0])		 
+		 }
+		 
+		 max_price := 0
+		 if params["filters[max_price1]"] != nil {
+	  	 max_price , _ = strconv.Atoi(params["filters[max_price1]"][0])
+  	 }
+  	 
+  	 min_beds :=0
+  	 if params["filters[min_beds]"] != nil {
+		   min_beds , _  = strconv.Atoi(params["filters[min_beds]"][0])
+		 }
+
+		 max_beds := 0
+		 if params["filters[max_price1]"] != nil {	
+	  	 max_beds , _  = strconv.Atoi(params["filters[max_price1]"][0])
+	   }
+	   	
+	   min_baths := 0	
+	   if params["filters[min_beds]"] != nil { 
+		   min_baths , _ = strconv.Atoi(params["filters[min_baths]"][0])
+		 }
+		 
+		 max_baths := 0
+		 if params["filters[max_baths1]"] != nil {
+	  	 max_baths , _ = strconv.Atoi(params["filters[max_baths1]"][0])
+	  }	 
   	 
   	 query := search_query
   	 query["max_price"] = bson.M{"$gte" : min_price }
@@ -226,8 +248,14 @@ func loadResult(r *http.Request )([]Property,[]int,int) {
 			 query["neighborhoods_id"]= bson.M{"$in" : neighborhoods_id }
  		 }
 
- 		 cats := params["filters[cats]"][0]
- 		 dogs := params["filters[dogs]"][0]
+ 		 cats := ""
+ 		 if params["filters[cats]"] != nil {
+ 		   cats = params["filters[cats]"][0]
+ 		 }
+ 		 dogs := ""
+ 		 if params["filters[dogs]"] != nil {
+ 		 	 dogs = params["filters[dogs]"][0]	
+ 		 }
  		 if  cats == "1" && dogs == "1" {
 				query["pet_policy"] = "cats and dogs"
  		 }else if cats == "1"{
@@ -240,14 +268,45 @@ func loadResult(r *http.Request )([]Property,[]int,int) {
  		 	 property_count ,_ = c.Find(query).Count()
  		 }
 
-  	 walkscore,_ := strconv.Atoi(params["filters[walkscore]"][0])
-  	 transitscore,_ := strconv.Atoi(params["filters[transitscore]"][0])
-  	 schoolrating,_ := strconv.Atoi(params["filters[schoolrating]"][0])
-  	 shoppingscore,_ := strconv.Atoi(params["filters[shoppingscore]"][0])
-  	 finedining,_ := strconv.Atoi(params["filters[finedining]"][0])
-  	 artandculture,_ := strconv.Atoi(params["filters[artandculture]"][0])
-  	 kidsfriendly,_ := strconv.Atoi(params["filters[kidsfriendly]"][0])
-  	 petsfriendly,_ := strconv.Atoi(params["filters[petsfriendly]"][0])
+  	 walkscore := 0
+  	 if params["filters[walkscore]"] != nil {
+  	   walkscore,_ = strconv.Atoi(params["filters[walkscore]"][0])
+  	 }
+  	 
+  	 transitscore := 0 
+  	 if params["filters[transitscore]"] != nil {
+  	   transitscore,_ = strconv.Atoi(params["filters[transitscore]"][0])
+  	 }
+  	 
+  	 schoolrating := 0 
+  	 if params["filters[schoolrating]"] != nil {
+	   	 schoolrating,_ = strconv.Atoi(params["filters[schoolrating]"][0])
+  	 }
+  	 
+  	 shoppingscore := 0 
+  	 if params["filters[shoppingscore]"] != nil {
+   	 	 shoppingscore,_ =  strconv.Atoi(params["filters[shoppingscore]"][0])
+  	 }
+  	 
+  	 finedining := 0
+  	 if params["filters[finedining]"] != nil {
+	  	 finedining,_ = strconv.Atoi(params["filters[finedining]"][0])
+	   }
+	   
+	   artandculture := 0	 
+	   if params["filters[artandculture]"] != nil {
+	  	 artandculture,_ = strconv.Atoi(params["filters[artandculture]"][0])	   
+	   }
+
+  	 kidsfriendly := 0
+  	 if params["filters[kidsfriendly]"] != nil {
+  	 	 kidsfriendly,_ = strconv.Atoi(params["filters[kidsfriendly]"][0])
+  	 }
+  	 
+  	 petsfriendly := 0 
+  	 if params["filters[petsfriendly]"] != nil {
+	  	 petsfriendly,_ = strconv.Atoi(params["filters[petsfriendly]"][0])
+	   }	 
   	 
   	 total_weight := walkscore + transitscore + schoolrating + shoppingscore + finedining + artandculture + kidsfriendly + petsfriendly
   	 if total_weight != 0{
