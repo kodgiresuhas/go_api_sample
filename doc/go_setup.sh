@@ -9,5 +9,3 @@ go get github.com/ziutek/mymysql/autorc
 go get github.com/ziutek/mymysql/godrv
 go get github.com/pelletier/go-toml
 go get labix.org/v2/mgo
-go get labix.org/v2/mgo/bson
-
