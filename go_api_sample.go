@@ -12,6 +12,7 @@ import (
   _ "github.com/ziutek/mymysql/native" // Native engine
   _ "github.com/ziutek/mymysql/thrsafe" // Thread safe engine
 	"math/rand"
+	"github.com/pelletier/go-toml"
 ) 
 
 type MarkerHash struct{
@@ -76,9 +77,7 @@ const lenPath = len("/properties/search.js")
 var max_price int
 var max_beds int
 var max_baths int
-var property_count int
-var zip_within_10_miles []string
-var featured_property_ids []int
+
 
 func are_filters_applied(query_params map[string][]string) bool{
    for key := range query_params {
@@ -89,17 +88,23 @@ func are_filters_applied(query_params map[string][]string) bool{
    return false
 }
 
-func include(search int) bool{
-	for k:= range featured_property_ids{
-		if k == search{
+func include(search int,featured_property_ids []int) bool{
+	for _,v:= range featured_property_ids{
+		if v == search{
 			return true
 		}
 	}
 	return false
 }
-func zip_around_10_miles(cur_zip string, limit int) []string {
 
-    db := mysql.New("tcp", "", "127.0.0.1:3306", "root","root", "rentalroost_development")
+func zip_around_10_miles(cur_zip string, limit int) []string {
+		config,_:= toml.LoadFile("config.toml")
+	 	mysql_user_name ,_ := config.Get("mysql_user_name").(string)
+	 	mysql_password ,_ := config.Get("mysql_password").(string)
+		mysql_db_name ,_ := config.Get("mysql_db_name").(string)
+	  mysql_url ,_ := config.Get("mysql_url").(string)
+
+    db := mysql.New("tcp", "", mysql_url, mysql_user_name,mysql_password, mysql_db_name)
     err := db.Connect()
     if err != nil {
         panic(err)
@@ -117,57 +122,86 @@ func zip_around_10_miles(cur_zip string, limit int) []string {
 	  return strings.Split(zips,",")
 }
 
-func loadResult(r *http.Request ) []Property {
-   title := r.URL.Query()//[lenPath:]
-	 
-	 session, err := mgo.Dial("localhost")
+func loadResult(r *http.Request )([]Property,[]int,int) {
+   params := r.URL.Query()//[lenPath:]
+ 
+	 config,_:= toml.LoadFile("config.toml")
+	 mongo_url ,_ := config.Get("mongo_url").(string)	
+   mongo_db_name ,_ := config.Get("mongo_db_name").(string)
+	 mongo_collection_name ,_ := config.Get("mongo_collection_name").(string)
+
+	 session, err := mgo.Dial(mongo_url)
 	 if err != nil { 
 	  panic(err) 
 	 } 
 	 defer session.Close() 
 	 session.SetMode(mgo.Monotonic, true) 
-	 c := session.DB("rentalroost_development").C("mongo_listed_properties") 
+	 c := session.DB(mongo_db_name).C(mongo_collection_name) 
 
 	 search_results:= []Property{}
-	 page,_ 		:= 	strconv.Atoi(title["page_number"][0])
-	 per_page,_ := 	strconv.Atoi(title["per_page"][0])
-	 zip_codes  :=	title["filters[zip_codes][]"];
-	 //featured_property_ids = title["filters[featured_property_ids][]"]
-	 current_location_zip := ""
-	 if title["current_location_zip"]!=nil{
-		 current_location_zip = title["current_location_zip"][0]
+	 var page int	
+	 page_no := params["page_number"]	 
+	 if page_no !=nil{
+		 page,_= 	strconv.Atoi(page_no[0])
+	 }	 
+	
+	 var per_page int
+	 if params["per_page"] != nil	{
+	 	 per_page,_ = 	strconv.Atoi(params["per_page"][0])
 	 }
+	 
+	 zip_codes  :=	params["filters[zip_codes][]"];
+	 
+	 var featured_property_ids []int
+	 f_prop_ids := params["featured_property_ids[]"]
+   for _,v:= range f_prop_ids {
+    val ,_:= strconv.Atoi(v)
+   	featured_property_ids = append(featured_property_ids,val)
+   } 	
+
+	 current_location_zip := ""
+	 if params["current_location_zip"]!=nil{
+		 current_location_zip = params["current_location_zip"][0]
+	 }
+
  	 scroll_flag :=0
- 	 scrl_flag := title["scroll_flag"]
+ 	 scrl_flag := params["scroll_flag"]
    if scrl_flag != nil {
 	   scroll_flag,_ = strconv.Atoi(scrl_flag[0])
    }
-   
+
+	 var property_count int 
 	 search_query := bson.M{}
-	 if zip_codes == nil || are_filters_applied(title) == false { 
-		 if scroll_flag == 0 {
+	 var zip_within_10_miles []string
+	 if zip_codes == nil || are_filters_applied(params) == false { 
+		 //if scroll_flag == 0 {
 		 	zip_within_10_miles = zip_around_10_miles(current_location_zip, 50)
 		 	//unique
-		 }
+		 //}
+
 		 search_query["zip"] = bson.M{"$in" :  zip_within_10_miles }
-     if scroll_flag == 0 && are_filters_applied(title) == false {
+
+     if scroll_flag == 0 && are_filters_applied(params) == false {
 			 temp := Property{}
        c.Find(search_query).Sort("-max_price").One(&temp) 
        max_price = temp.Max_price
+
        c.Find(search_query).Sort("-max_beds").One(&temp) 
        max_beds = temp.Max_beds
+
        c.Find(search_query).Sort("-max_baths").One(&temp) 
        max_baths = temp.Max_baths
+
        property_count,_ = c.Find(search_query).Count()
      }
 	 }	
-	 if are_filters_applied(title) == true{
-	   min_price , _ := strconv.Atoi(title["filters[min_price]"][0])
-  	 max_price , _ := strconv.Atoi(title["filters[max_price1]"][0])
-	   min_beds , _  := strconv.Atoi(title["filters[min_beds]"][0])
-  	 max_beds , _  := strconv.Atoi(title["filters[max_price1]"][0])
-	   min_baths , _ := strconv.Atoi(title["filters[min_baths]"][0])
-  	 max_baths , _ := strconv.Atoi(title["filters[max_baths1]"][0])
+	 if are_filters_applied(params) == true{
+	   min_price , _ := strconv.Atoi(params["filters[min_price]"][0])
+  	 max_price , _ := strconv.Atoi(params["filters[max_price1]"][0])
+	   min_beds , _  := strconv.Atoi(params["filters[min_beds]"][0])
+  	 max_beds , _  := strconv.Atoi(params["filters[max_price1]"][0])
+	   min_baths , _ := strconv.Atoi(params["filters[min_baths]"][0])
+  	 max_baths , _ := strconv.Atoi(params["filters[max_baths1]"][0])
   	 
   	 query := search_query
   	 query["max_price"] = bson.M{"$gte" : min_price }
@@ -177,7 +211,7 @@ func loadResult(r *http.Request ) []Property {
  		 query["max_baths"] = bson.M{"$gte" : min_baths }
  		 query["min_baths"] = bson.M{"$lte" : max_baths } 
  		 
- 		 amenities :=title["filters[amenities][]"];
+ 		 amenities :=params["filters[amenities][]"];
  		 if amenities !=nil {
 			 query["amenities"]= bson.M{"$all" :amenities }
  		 }
@@ -185,12 +219,14 @@ func loadResult(r *http.Request ) []Property {
 		 if zip_codes !=nil {
 			 query["zip"]= bson.M{"$in" : zip_codes }
  		 }
-  	 neighborhoods_id :=title["filters[neighborhoods_id][]"];
+
+  	 neighborhoods_id :=params["filters[neighborhoods_id][]"];
  		 if neighborhoods_id != nil {
 			 query["neighborhoods_id"]= bson.M{"$in" : neighborhoods_id }
  		 }
- 		 cats := title["filters[cats]"][0]
- 		 dogs := title["filters[dogs]"][0]
+
+ 		 cats := params["filters[cats]"][0]
+ 		 dogs := params["filters[dogs]"][0]
  		 if  cats == "1" && dogs == "1" {
 				query["pet_policy"] = "cats and dogs"
  		 }else if cats == "1"{
@@ -203,33 +239,38 @@ func loadResult(r *http.Request ) []Property {
  		 	 property_count ,_ = c.Find(query).Count()
  		 }
 
-  	 walkscore,_ := strconv.Atoi(title["filters[walkscore]"][0])
-  	 transitscore,_ := strconv.Atoi(title["filters[transitscore]"][0])
-  	 schoolrating,_ := strconv.Atoi(title["filters[schoolrating]"][0])
-  	 shoppingscore,_ := strconv.Atoi(title["filters[shoppingscore]"][0])
-  	 finedining,_ := strconv.Atoi(title["filters[finedining]"][0])
-  	 artandculture,_ := strconv.Atoi(title["filters[artandculture]"][0])
-  	 kidsfriendly,_ := strconv.Atoi(title["filters[kidsfriendly]"][0])
-  	 petsfriendly,_ := strconv.Atoi(title["filters[petsfriendly]"][0])
+  	 walkscore,_ := strconv.Atoi(params["filters[walkscore]"][0])
+  	 transitscore,_ := strconv.Atoi(params["filters[transitscore]"][0])
+  	 schoolrating,_ := strconv.Atoi(params["filters[schoolrating]"][0])
+  	 shoppingscore,_ := strconv.Atoi(params["filters[shoppingscore]"][0])
+  	 finedining,_ := strconv.Atoi(params["filters[finedining]"][0])
+  	 artandculture,_ := strconv.Atoi(params["filters[artandculture]"][0])
+  	 kidsfriendly,_ := strconv.Atoi(params["filters[kidsfriendly]"][0])
+  	 petsfriendly,_ := strconv.Atoi(params["filters[petsfriendly]"][0])
   	 
   	 total_weight := walkscore + transitscore + schoolrating + shoppingscore + finedining + artandculture + kidsfriendly + petsfriendly
   	 if total_weight != 0{
+
 			 prop_weights := make(map[int]int)
 			 result := Property{}
 			 iter := c.Find(query).Iter()
+
 			 for iter.Next(&result) {
 			 		prop_weights[result.Prop_id] = (walkscore * result.Walkscore + transitscore * result.Transit_score + 
 			 		schoolrating * result.School_rating + shoppingscore * result.Shopping_score + finedining * result.Fine_dining_score +
 			 		artandculture * result.Art_culture_score + kidsfriendly * result.Kids_friendly_score + 
 			 		petsfriendly * result.Pets_friendly_score)/total_weight
        }
+
        start := ((page - 1)*per_page)
        end1 := start + per_page - 1
+
        var values,keys []int
- 			 for k := range prop_weights {
+ 			 for k,v:= range prop_weights {
 					keys = append(keys,k)
-					values = append(values,prop_weights[k])
+					values = append(values,v)
 			 }
+
 			 for i:=0;i < (len(keys) - 1);i++{
 			 	for j:=0;j < (len(keys) -i -1) ;j++{
 			 		if values[j] > values[j+1]{
@@ -242,16 +283,20 @@ func loadResult(r *http.Request ) []Property {
 			 		}
 			 	}
 			 }
+
        keys=keys[start:end1+1]
        if keys !=nil {
 				 query["prop_id"]= bson.M{"$in" : keys }
  		 	 }
+
        c.Find(query).Sort("max_price").All(&search_results)
+
   	 }else{
 			 c.Find(query).Limit(per_page).Sort("max_price").Skip((page-1)*per_page).All(&search_results)
   	 }
-  	 return search_results
+  	 return search_results,featured_property_ids,property_count
   }
+
   search_query_for_count :=search_query
   search_query_for_count["zip"]= current_location_zip
   property_count,_ = c.Find(search_query_for_count).Count()
@@ -271,18 +316,17 @@ func loadResult(r *http.Request ) []Property {
 				properties_in_location_zip = append(properties_in_location_zip , search_results[k])
 			}
 		}
-  	return properties_in_location_zip
+  	return properties_in_location_zip,featured_property_ids,property_count
   }else{
   	offset := (((page-1)*per_page)-property_count)
   	c.Find(search_query_for_count).Limit(per_page).Skip(offset).Sort("zip").All(&search_results)
-		return search_results	       	
+		return search_results,featured_property_ids,property_count	       	
   }
-  return search_results
+  return search_results,featured_property_ids,property_count
 }
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
-    results := loadResult( r )
-    fmt.Println(max_price,max_beds,max_baths,property_count)
+    results,featured_property_ids,property_count := loadResult( r )
 		for k := range results {
 		  results[k].Processed_amenities = results[k].Amenities
 		  
@@ -329,7 +373,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			
 			image := ""
-			if include(results[k].Prop_id)==true 			{
+			if include(results[k].Prop_id,featured_property_ids)==true 			{
 				image = "/assets/featured_property.png"
 			}else{
 	  		image = "/assets/multi_family_marker.png"
@@ -347,6 +391,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
     result_json, _ := json.Marshal(results)
     w.Header().Set("Content-Type", "application/json")
     fmt.Fprint(w,string(result_json))
+    fmt.Println("Total Count",property_count)
 	  return
 }
 
